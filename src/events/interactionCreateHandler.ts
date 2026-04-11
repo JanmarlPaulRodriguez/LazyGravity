@@ -41,6 +41,13 @@ import { ModelService } from '../services/modelService';
 import { AutoAcceptService } from '../services/autoAcceptService';
 import { JoinCommandHandler } from '../commands/joinCommandHandler';
 import { isSessionSelectId } from '../ui/sessionPickerUi';
+import {
+    ensureApprovalDetector as ensureApprovalDetectorFn,
+    ensureErrorPopupDetector as ensureErrorPopupDetectorFn,
+    ensurePlanningDetector as ensurePlanningDetectorFn,
+    ensureRunCommandDetector as ensureRunCommandDetectorFn,
+} from '../services/cdpBridgeManager';
+import { wrapDiscordChannel } from '../platform/discord/wrappers';
 
 export interface InteractionCreateHandlerDeps {
     config: { allowedUserIds: string[] };
@@ -82,9 +89,48 @@ export interface InteractionCreateHandlerDeps {
     handleTemplateUse?: (interaction: ButtonInteraction, templateId: number) => Promise<void>;
     joinHandler?: JoinCommandHandler;
     userPrefRepo?: UserPreferenceRepository;
+    ensureApprovalDetector?: (bridge: CdpBridge, cdp: CdpService, projectName: string) => void;
+    ensureErrorPopupDetector?: (bridge: CdpBridge, cdp: CdpService, projectName: string) => void;
+    ensurePlanningDetector?: (bridge: CdpBridge, cdp: CdpService, projectName: string) => void;
+    ensureRunCommandDetector?: (bridge: CdpBridge, cdp: CdpService, projectName: string) => void;
 }
 
 export function createInteractionCreateHandler(deps: InteractionCreateHandlerDeps) {
+    const ensureApprovalDetector = deps.ensureApprovalDetector ?? ensureApprovalDetectorFn;
+    const ensureErrorPopupDetector = deps.ensureErrorPopupDetector ?? ensureErrorPopupDetectorFn;
+    const ensurePlanningDetector = deps.ensurePlanningDetector ?? ensurePlanningDetectorFn;
+    const ensureRunCommandDetector = deps.ensureRunCommandDetector ?? ensureRunCommandDetectorFn;
+
+    const resolveCdp = async (interaction: Interaction): Promise<CdpService | null> => {
+        const current = deps.getCurrentCdp(deps.bridge);
+        if (current && current.isConnected()) return current;
+
+        if (!interaction.channelId) return null;
+        const workspacePath = deps.wsHandler.getWorkspaceForChannel(interaction.channelId);
+        if (!workspacePath) return null;
+
+        try {
+            const cdp = await deps.bridge.pool.getOrConnect(workspacePath);
+            const projectName = deps.bridge.pool.extractProjectName(workspacePath);
+            deps.bridge.lastActiveWorkspace = projectName;
+
+            if (interaction.channel && interaction.channel.isTextBased()) {
+                deps.bridge.lastActiveChannel = wrapDiscordChannel(interaction.channel as any);
+            }
+
+            // Initialize detectors if not already running
+            ensureApprovalDetector(deps.bridge, cdp, projectName);
+            ensureErrorPopupDetector(deps.bridge, cdp, projectName);
+            ensurePlanningDetector(deps.bridge, cdp, projectName);
+            ensureRunCommandDetector(deps.bridge, cdp, projectName);
+
+            return cdp;
+        } catch (e) {
+            logger.error(`[resolveCdp] Failed to connect to ${workspacePath}:`, e);
+            return null;
+        }
+    };
+
     return async (interaction: Interaction): Promise<void> => {
         if (interaction.isButton()) {
             if (!deps.config.allowedUserIds.includes(interaction.user.id)) {
@@ -529,7 +575,7 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
 
                 if (interaction.customId === 'model_set_default_btn') {
                     await interaction.deferUpdate();
-                    const cdp = deps.getCurrentCdp(deps.bridge);
+                    const cdp = await resolveCdp(interaction);
                     if (!cdp) {
                         await interaction.followUp({ content: 'Not connected to CDP.', flags: MessageFlags.Ephemeral });
                         return;
@@ -546,7 +592,7 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
                     await deps.sendModelsUI(
                         { editReply: async (data: any) => await interaction.editReply(data) },
                         {
-                            getCurrentCdp: () => deps.getCurrentCdp(deps.bridge),
+                            getCurrentCdp: () => cdp,
                             fetchQuota: async () => deps.bridge.quota.fetchQuota(),
                         },
                     );
@@ -560,10 +606,11 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
                     if (deps.userPrefRepo) {
                         deps.userPrefRepo.setDefaultModel(interaction.user.id, null);
                     }
+                    const cdp = await resolveCdp(interaction);
                     await deps.sendModelsUI(
                         { editReply: async (data: any) => await interaction.editReply(data) },
                         {
-                            getCurrentCdp: () => deps.getCurrentCdp(deps.bridge),
+                            getCurrentCdp: () => cdp,
                             fetchQuota: async () => deps.bridge.quota.fetchQuota(),
                         },
                     );
@@ -573,10 +620,11 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
 
                 if (interaction.customId === 'model_refresh_btn') {
                     await interaction.deferUpdate();
+                    const cdp = await resolveCdp(interaction);
                     await deps.sendModelsUI(
                         { editReply: async (data: any) => await interaction.editReply(data) },
                         {
-                            getCurrentCdp: () => deps.getCurrentCdp(deps.bridge),
+                            getCurrentCdp: () => cdp,
                             fetchQuota: async () => deps.bridge.quota.fetchQuota(),
                         },
                     );
@@ -587,7 +635,7 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
                     await interaction.deferUpdate();
 
                     const modelName = interaction.customId.replace('model_btn_', '');
-                    const cdp = deps.getCurrentCdp(deps.bridge);
+                    const cdp = await resolveCdp(interaction);
 
                     if (!cdp) {
                         await interaction.followUp({ content: 'Not connected to CDP.', flags: MessageFlags.Ephemeral });
@@ -602,7 +650,7 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
                         await deps.sendModelsUI(
                             { editReply: async (data: any) => await interaction.editReply(data) },
                             {
-                                getCurrentCdp: () => deps.getCurrentCdp(deps.bridge),
+                                getCurrentCdp: () => cdp,
                                 fetchQuota: async () => deps.bridge.quota.fetchQuota(),
                             },
                         );
@@ -712,7 +760,7 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
 
                 deps.modeService.setMode(selectedMode);
 
-                const cdp = deps.getCurrentCdp(deps.bridge);
+                const cdp = await resolveCdp(interaction);
                 if (cdp) {
                     const res = await cdp.setUiMode(selectedMode);
                     if (!res.ok) {
@@ -720,7 +768,11 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
                     }
                 }
 
-                await deps.sendModeUI({ editReply: async (data: any) => await interaction.editReply(data) }, deps.modeService);
+                await deps.sendModeUI(
+                    { editReply: async (data: any) => await interaction.editReply(data) },
+                    deps.modeService,
+                    { getCurrentCdp: () => cdp },
+                );
                 await interaction.followUp({ content: `Mode changed to **${MODE_DISPLAY_NAMES[selectedMode] || selectedMode}**!`, flags: MessageFlags.Ephemeral });
             } catch (error: any) {
                 logger.error('Error during mode dropdown handling:', error);

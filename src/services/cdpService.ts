@@ -1603,10 +1603,9 @@ export class CdpService extends EventEmitter {
         }
 
         const expression = `(async () => {
-            return Array.from(document.querySelectorAll('div.cursor-pointer'))
-                .map(e => ({text: (e.textContent || '').trim().replace(/New$/, ''), class: e.className}))
-                .filter(e => e.class.includes('px-2 py-1 flex items-center justify-between') || e.text.includes('Gemini') || e.text.includes('GPT') || e.text.includes('Claude'))
-                .map(e => e.text);
+            return Array.from(document.querySelectorAll('button'))
+                .filter(b => b.className.includes('justify-between') && (b.className.includes('bg-gray-500/20') || b.className.includes('hover:bg-gray-500/10')))
+                .map(e => (e.textContent || '').trim().replace(/New$/, '').trim());
         })()`;
 
         try {
@@ -1639,8 +1638,8 @@ export class CdpService extends EventEmitter {
             return null;
         }
         const expression = `(() => {
-            return Array.from(document.querySelectorAll('div.cursor-pointer'))
-                .find(e => e.className.includes('px-2 py-1 flex items-center justify-between') && e.className.includes('bg-gray-500/20'))
+            return Array.from(document.querySelectorAll('button'))
+                .find(b => b.className.includes('justify-between') && b.className.includes('bg-gray-500/20'))
                 ?.textContent?.trim().replace(/New$/, '') || null;
         })()`;
         try {
@@ -1675,11 +1674,11 @@ export class CdpService extends EventEmitter {
             const targetModel = ${safeModel};
             
             // Get all items in the model list
-            const modelItems = Array.from(document.querySelectorAll('div.cursor-pointer'))
-                .filter(e => e.className.includes('px-2 py-1 flex items-center justify-between'));
+            const modelItems = Array.from(document.querySelectorAll('button'))
+                .filter(b => b.className.includes('justify-between') && (b.className.includes('bg-gray-500/20') || b.className.includes('hover:bg-gray-500/10')));
             
             if (modelItems.length === 0) {
-                return { ok: false, error: 'Model list not found. The dropdown may not be open.' };
+                return { ok: false, error: 'Model list not found on UI.' };
             }
             
             // Match target model by name (compare after removing New suffix)
@@ -1694,7 +1693,7 @@ export class CdpService extends EventEmitter {
             }
             
             // Check if already selected
-            if (targetItem.className.includes('bg-gray-500/20') && !targetItem.className.includes('hover:bg-gray-500/20')) {
+            if (targetItem.className.includes('bg-gray-500/20')) {
                 return { ok: true, model: targetModel, alreadySelected: true };
             }
             
@@ -1703,14 +1702,14 @@ export class CdpService extends EventEmitter {
             await new Promise(r => setTimeout(r, 500));
             
             // Verify selection was applied
-            const updatedItems = Array.from(document.querySelectorAll('div.cursor-pointer'))
-                .filter(e => e.className.includes('px-2 py-1 flex items-center justify-between'));
+            const updatedItems = Array.from(document.querySelectorAll('button'))
+                .filter(b => b.className.includes('justify-between') && (b.className.includes('bg-gray-500/20') || b.className.includes('hover:bg-gray-500/10')));
             const selectedItem = updatedItems.find(el => {
                 const text = (el.textContent || '').trim().replace(/New$/, '').trim();
                 return text === targetModel || text.toLowerCase() === targetModel.toLowerCase();
             });
             
-            if (selectedItem && selectedItem.className.includes('bg-gray-500/20') && !selectedItem.className.includes('hover:bg-gray-500/20')) {
+            if (selectedItem && selectedItem.className.includes('bg-gray-500/20')) {
                 return { ok: true, model: targetModel, verified: true };
             }
             

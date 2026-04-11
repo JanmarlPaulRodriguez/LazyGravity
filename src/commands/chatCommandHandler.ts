@@ -141,13 +141,28 @@ export class ChatCommandHandler {
      */
     async handleChat(interaction: ChatInputCommandInteraction): Promise<void> {
         const session = this.chatSessionRepo.findByChannelId(interaction.channelId);
+        const binding = this.bindingRepo.findByChannelId(interaction.channelId);
+        const workspaceName = session?.workspacePath ?? binding?.workspacePath;
+        const workspacePath = workspaceName ? this.workspaceService.getWorkspacePath(workspaceName) : null;
 
         if (!session) {
             // Channel not managed by session -- get info directly from Antigravity
-            const activeNames = this.pool?.getActiveWorkspaceNames() ?? [];
-            const anyCdp = activeNames.length > 0 ? this.pool?.getConnected(activeNames[0]) : null;
-            const info = anyCdp
-                ? await this.chatSessionService.getCurrentSessionInfo(anyCdp)
+            let cdp: import('../services/cdpService').CdpService | null = null;
+            if (workspacePath && this.pool) {
+                try {
+                    cdp = await this.pool.getOrConnect(workspacePath);
+                } catch {
+                    // Fall back to any active connection
+                }
+            }
+
+            if (!cdp && this.pool) {
+                const activeNames = this.pool.getActiveWorkspaceNames();
+                cdp = activeNames.length > 0 ? this.pool.getConnected(activeNames[0]) : null;
+            }
+
+            const info = cdp
+                ? await this.chatSessionService.getCurrentSessionInfo(cdp)
                 : { title: t('(CDP Disconnected)'), hasActiveChat: false };
 
             const embed = new EmbedBuilder()

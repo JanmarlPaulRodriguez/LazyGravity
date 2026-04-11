@@ -1384,6 +1384,44 @@ async function autoRenameChannel(
 }
 
 /**
+ * On-demand CDP resolution for interactions.
+ * If not already connected via lastActiveWorkspace, tries to resolve via channel binding.
+ */
+async function resolveCdpForInteraction(
+    interaction: ChatInputCommandInteraction | Interaction,
+    bridge: CdpBridge,
+    wsHandler: WorkspaceCommandHandler,
+): Promise<CdpService | null> {
+    const current = getCurrentCdp(bridge);
+    if (current && current.isConnected()) return current;
+
+    if (!interaction.channelId) return null;
+    const workspacePath = wsHandler.getWorkspaceForChannel(interaction.channelId);
+    if (!workspacePath) return null;
+
+    try {
+        const cdp = await bridge.pool.getOrConnect(workspacePath);
+        const projectName = bridge.pool.extractProjectName(workspacePath);
+        bridge.lastActiveWorkspace = projectName;
+
+        if (interaction.channel && interaction.channel.isTextBased()) {
+            bridge.lastActiveChannel = wrapDiscordChannel(interaction.channel as any);
+        }
+
+        // Initialize detectors if not already running
+        ensureApprovalDetector(bridge, cdp, projectName);
+        ensureErrorPopupDetector(bridge, cdp, projectName);
+        ensurePlanningDetector(bridge, cdp, projectName);
+        ensureRunCommandDetector(bridge, cdp, projectName);
+
+        return cdp;
+    } catch (e) {
+        logger.error(`[resolveCdpForInteraction] Failed to connect to ${workspacePath}:`, e);
+        return null;
+    }
+}
+
+/**
  * Handle Discord Interactions API slash commands
  */
 async function handleSlashInteraction(
@@ -1480,19 +1518,21 @@ async function handleSlashInteraction(
         }
 
         case 'mode': {
-            await sendModeUI(interaction, modeService, { getCurrentCdp: () => getCurrentCdp(bridge) });
+            const cdp = await resolveCdpForInteraction(interaction, bridge, wsHandler);
+            await sendModeUI(interaction, modeService, { getCurrentCdp: () => cdp });
             break;
         }
 
         case 'model': {
             const modelName = interaction.options.getString('name');
+            const cdp = await resolveCdpForInteraction(interaction, bridge, wsHandler);
+
             if (!modelName) {
                 await sendModelsUI(interaction, {
-                    getCurrentCdp: () => getCurrentCdp(bridge),
+                    getCurrentCdp: () => cdp,
                     fetchQuota: async () => bridge.quota.fetchQuota(),
                 });
             } else {
-                const cdp = getCurrentCdp(bridge);
                 if (!cdp) {
                     await interaction.editReply({ content: 'Not connected to CDP.' });
                     break;
@@ -1540,10 +1580,7 @@ async function handleSlashInteraction(
 
         case 'status': {
             const activeNames = bridge.pool.getActiveWorkspaceNames();
-            const currentModel = (() => {
-                const cdp = getCurrentCdp(bridge);
-                return cdp ? 'CDP Connected' : 'Disconnected';
-            })();
+            const cdp = await resolveCdpForInteraction(interaction, bridge, wsHandler);
             const currentMode = modeService.getCurrentMode();
 
             const mirroringWorkspaces = activeNames.filter(
@@ -1629,12 +1666,13 @@ async function handleSlashInteraction(
         }
 
         case 'screenshot': {
-            await handleScreenshot(interaction, getCurrentCdp(bridge));
+            const cdp = await resolveCdpForInteraction(interaction, bridge, wsHandler);
+            await handleScreenshot(interaction, cdp);
             break;
         }
 
         case 'stop': {
-            const cdp = getCurrentCdp(bridge);
+            const cdp = await resolveCdpForInteraction(interaction, bridge, wsHandler);
             if (!cdp) {
                 await interaction.editReply({ content: '⚠️ Not connected to CDP. Please connect to a project first.' });
                 break;
