@@ -219,9 +219,9 @@ async function handleStatus(deps: TelegramCommandDeps, message: PlatformMessage)
     const boundProject = binding?.workspacePath ?? '(none)';
 
     // CDP connection status for this chat's project
-    const activeWorkspaces = deps.bridge.pool.getActiveWorkspaceNames();
+    const activePaths = deps.bridge.pool.getActiveWorkspacePaths();
     const projectConnected = binding
-        ? activeWorkspaces.some((name) => binding.workspacePath.includes(name) || name.includes(binding.workspacePath))
+        ? activePaths.some((p) => p === binding.workspacePath)
         : false;
 
     const mode = deps.modeService
@@ -236,7 +236,7 @@ async function handleStatus(deps: TelegramCommandDeps, message: PlatformMessage)
         `  CDP: ${projectConnected ? 'Connected' : 'Not connected'}`,
         '',
         `Mode: ${escapeHtml(mode)}`,
-        `Active connections: ${activeWorkspaces.length > 0 ? activeWorkspaces.map(escapeHtml).join(', ') : 'none'}`,
+        `Active connections: ${activePaths.length > 0 ? activePaths.map((p) => escapeHtml(deps.bridge.pool.extractProjectName(p))).join(', ') : 'none'}`,
     ];
 
     await message.reply({ text: lines.join('\n') }).catch(logger.error);
@@ -247,6 +247,7 @@ async function handleStop(deps: TelegramCommandDeps, message: PlatformMessage): 
 
     // Try to use the active ResponseMonitor first (it stops monitoring + clicks stop)
     if (workspace && deps.activeMonitors) {
+        // bridge.lastActiveWorkspace is now workspacePath
         const monitor = deps.activeMonitors.get(workspace);
         if (monitor && monitor.isActive()) {
             logger.info(`[TelegramCommand:stop] Stopping active monitor for ${workspace}...`);

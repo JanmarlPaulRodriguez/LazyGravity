@@ -779,11 +779,11 @@ async function sendPromptToAntigravity(
                             const sessionInfo = await options.chatSessionService.getCurrentSessionInfo(cdp);
                             if (sessionInfo && sessionInfo.hasActiveChat && sessionInfo.title && sessionInfo.title !== t('(Untitled)')) {
                                 const session = options.chatSessionRepo.findByChannelId(message.channelId);
-                                const projectName = session
-                                    ? bridge.pool.extractProjectName(session.workspacePath)
-                                    : cdp.getCurrentWorkspaceName();
-                                if (projectName) {
-                                    registerApprovalSessionChannel(bridge, projectName, sessionInfo.title, wrapDiscordChannel(message.channel as any));
+                                const workspacePath = session
+                                    ? session.workspacePath
+                                    : cdp.getCurrentWorkspaceName(); // Fallback if session missing
+                                if (workspacePath) {
+                                    registerApprovalSessionChannel(bridge, workspacePath, sessionInfo.title, wrapDiscordChannel(message.channel as any));
                                 }
 
                                 const newName = options.titleGenerator.sanitizeForChannelName(sessionInfo.title);
@@ -986,9 +986,10 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
             const projects = workspaceService.scanWorkspaces();
 
             // Check CDP connection status
-            const activeWorkspaces = bridge.pool.getActiveWorkspaceNames();
-            const cdpStatus = activeWorkspaces.length > 0
-                ? `Connected (${activeWorkspaces.join(', ')})`
+            const activePaths = bridge.pool.getActiveWorkspacePaths();
+            const activeNames = activePaths.map(p => bridge.pool.extractProjectName(p));
+            const cdpStatus = activeNames.length > 0
+                ? `Connected (${activeNames.join(', ')})`
                 : 'Not connected';
 
             const dashboardEmbed = new EmbedBuilder()
@@ -1304,9 +1305,10 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
                 const pkg = await import('../../package.json');
                 const version = pkg.default?.version ?? pkg.version ?? 'unknown';
                 const projects = workspaceService.scanWorkspaces();
-                const activeWorkspaces = bridge.pool.getActiveWorkspaceNames();
-                const cdpStatus = activeWorkspaces.length > 0
-                    ? `Connected (${activeWorkspaces.join(', ')})`
+                const activePaths = bridge.pool.getActiveWorkspacePaths();
+                const activeNames = activePaths.map(p => bridge.pool.extractProjectName(p));
+                const cdpStatus = activeNames.length > 0
+                    ? `Connected (${activeNames.join(', ')})`
                     : 'Not connected';
 
                 const startupText = [
@@ -1402,17 +1404,17 @@ async function resolveCdpForInteraction(
     try {
         const cdp = await bridge.pool.getOrConnect(workspacePath);
         const projectName = bridge.pool.extractProjectName(workspacePath);
-        bridge.lastActiveWorkspace = projectName;
+        bridge.lastActiveWorkspace = workspacePath;
 
         if (interaction.channel && interaction.channel.isTextBased()) {
             bridge.lastActiveChannel = wrapDiscordChannel(interaction.channel as any);
         }
 
         // Initialize detectors if not already running
-        ensureApprovalDetector(bridge, cdp, projectName);
-        ensureErrorPopupDetector(bridge, cdp, projectName);
-        ensurePlanningDetector(bridge, cdp, projectName);
-        ensureRunCommandDetector(bridge, cdp, projectName);
+        ensureApprovalDetector(bridge, cdp, workspacePath);
+        ensureErrorPopupDetector(bridge, cdp, workspacePath);
+        ensurePlanningDetector(bridge, cdp, workspacePath);
+        ensureRunCommandDetector(bridge, cdp, workspacePath);
 
         return cdp;
     } catch (e) {
@@ -1579,31 +1581,32 @@ async function handleSlashInteraction(
         }
 
         case 'status': {
-            const activeNames = bridge.pool.getActiveWorkspaceNames();
+            const activePaths = bridge.pool.getActiveWorkspacePaths();
             const cdp = await resolveCdpForInteraction(interaction, bridge, wsHandler);
             const currentMode = modeService.getCurrentMode();
 
-            const mirroringWorkspaces = activeNames.filter(
-                (name) => bridge.pool.getUserMessageDetector(name)?.isActive(),
-            );
+            const mirroringWorkspaces = activePaths.filter(
+                (p) => bridge.pool.getUserMessageDetector(p)?.isActive(),
+            ).map(p => bridge.pool.extractProjectName(p));
             const mirrorStatus = mirroringWorkspaces.length > 0
                 ? `📡 ON (${mirroringWorkspaces.join(', ')})`
                 : '⚪ OFF';
 
             const statusFields = [
-                { name: 'CDP Connection', value: activeNames.length > 0 ? `🟢 ${activeNames.length} project(s) connected` : '⚪ Disconnected', inline: true },
+                { name: 'CDP Connection', value: activePaths.length > 0 ? `🟢 ${activePaths.length} project(s) connected` : '⚪ Disconnected', inline: true },
                 { name: 'Mode', value: MODE_DISPLAY_NAMES[currentMode] || currentMode, inline: true },
                 { name: 'Auto Approve', value: autoAcceptService.isEnabled() ? '🟢 ON' : '⚪ OFF', inline: true },
                 { name: 'Mirroring', value: mirrorStatus, inline: true },
             ];
 
             let statusDescription = '';
-            if (activeNames.length > 0) {
-                const lines = activeNames.map((name) => {
-                    const cdp = bridge.pool.getConnected(name);
+            if (activePaths.length > 0) {
+                const lines = activePaths.map((p) => {
+                    const name = bridge.pool.extractProjectName(p);
+                    const cdp = bridge.pool.getConnected(p);
                     const contexts = cdp ? cdp.getContexts().length : 0;
-                    const detectorActive = bridge.pool.getApprovalDetector(name)?.isActive() ? ' [Detecting]' : '';
-                    const mirrorActive = bridge.pool.getUserMessageDetector(name)?.isActive() ? ' [Mirror]' : '';
+                    const detectorActive = bridge.pool.getApprovalDetector(p)?.isActive() ? ' [Detecting]' : '';
+                    const mirrorActive = bridge.pool.getUserMessageDetector(p)?.isActive() ? ' [Mirror]' : '';
                     return `• **${name}** — Contexts: ${contexts}${detectorActive}${mirrorActive}`;
                 });
                 statusDescription = `**Connected Projects:**\n${lines.join('\n')}`;
@@ -1623,8 +1626,8 @@ async function handleSlashInteraction(
             }
 
             const embed = new EmbedBuilder()
-                .setTitle('🔧 Bot Status')
-                .setColor(activeNames.length > 0 ? 0x00CC88 : 0x888888)
+                .setTitle('🔧 LazyGravity Status')
+                .setColor(activePaths.length > 0 ? 0x00CC88 : 0x888888)
                 .addFields(...statusFields)
                 .setDescription(statusDescription)
                 .setTimestamp();

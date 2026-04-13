@@ -24,7 +24,7 @@ export function createRunCommandButtonAction(
             if (!parsed) return null;
             return {
                 action: parsed.action,
-                projectName: parsed.projectName ?? '',
+                workspacePath: parsed.workspacePath ?? '',
                 channelId: parsed.channelId ?? '',
             };
         },
@@ -45,13 +45,13 @@ export function createRunCommandButtonAction(
                 return;
             }
 
-            const projectName = params.projectName || deps.bridge.lastActiveWorkspace;
-            const detector = projectName
-                ? deps.bridge.pool.getRunCommandDetector(projectName)
+            const workspacePath = params.workspacePath || deps.bridge.lastActiveWorkspace;
+            const detector = workspacePath
+                ? deps.bridge.pool.getRunCommandDetector(workspacePath)
                 : undefined;
 
             if (!detector) {
-                logger.warn(`[RunCommandAction] No detector for project=${projectName}`);
+                logger.warn(`[RunCommandAction] No detector for project=${workspacePath}`);
                 await interaction
                     .reply({ text: 'Run command detector not found.' })
                     .catch(() => {});

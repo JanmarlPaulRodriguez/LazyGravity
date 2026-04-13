@@ -24,7 +24,7 @@ export function createApprovalButtonAction(
             if (!parsed) return null;
             return {
                 action: parsed.action,
-                projectName: parsed.projectName ?? '',
+                workspacePath: parsed.workspacePath ?? '',
                 channelId: parsed.channelId ?? '',
             };
         },
@@ -46,15 +46,15 @@ export function createApprovalButtonAction(
                 return;
             }
 
-            const projectName = params.projectName || deps.bridge.lastActiveWorkspace;
-            logger.debug(`[ApprovalAction] action=${action} project=${projectName ?? 'null'} channel=${interaction.channel.id}`);
+            const workspacePath = params.workspacePath || deps.bridge.lastActiveWorkspace;
+            logger.debug(`[ApprovalAction] action=${action} project=${workspacePath ?? 'null'} channel=${interaction.channel.id}`);
 
-            const detector = projectName
-                ? deps.bridge.pool.getApprovalDetector(projectName)
+            const detector = workspacePath
+                ? deps.bridge.pool.getApprovalDetector(workspacePath)
                 : undefined;
 
             if (!detector) {
-                logger.warn(`[ApprovalAction] No detector for project=${projectName}`);
+                logger.warn(`[ApprovalAction] No detector for project=${workspacePath}`);
                 await interaction
                     .reply({ text: 'Approval detector not found.' })
                     .catch(() => {});

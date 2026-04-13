@@ -49,15 +49,31 @@ const GET_NEW_CHAT_BUTTON_SCRIPT = `(() => {
  * The title element is a div with the text-ellipsis class inside the header.
  */
 const GET_CHAT_TITLE_SCRIPT = `(() => {
+    const isVisible = (el) => !!el && el instanceof HTMLElement && el.offsetParent !== null;
     const panel = document.querySelector('.antigravity-agent-side-panel') || document.querySelector('[data-testid="side-panel"]');
     if (!panel) return { title: '', hasActiveChat: false };
-    // Prefer data-testid for title
-    const titleEl = panel.querySelector('[data-testid="side-panel-header-title"]')
-        || panel.querySelector('div[class*="text-ellipsis"]')
-        || panel.querySelector('div[class*="border-b"] div[class*="text-ellipsis"]');
-    const title = titleEl ? (titleEl.textContent || '').trim() : '';
-    // "Agent" or "Assistant" are default empty chat titles
-    const hasActiveChat = title.length > 0 && title !== 'Agent' && title !== 'Assistant';
+
+    // 1. Precise Header Title check
+    // Scoped to header to avoid picking up conversation list items accidentally.
+    const header = panel.querySelector('[data-testid="side-panel-header"]') 
+        || panel.querySelector('div[class*="border-b"]')
+        || panel;
+    
+    const titleEl = header.querySelector('[data-testid="side-panel-header-title"]')
+        || header.querySelector('div[class*="text-ellipsis"]');
+    
+    let title = titleEl ? (titleEl.textContent || '').trim() : '';
+
+    // 2. Secondary check: If title is Agent/Assistant or empty, it might be a new chat
+    const isAgentDefault = title === 'Agent' || title === 'Assistant' || !title;
+    
+    // 3. Fallback: If header title is suspicious, verify it's not actually an indexed project name
+    // (Antigravity sometimes shows "ProjectName - ChatTitle")
+    if (title.includes(' — ')) {
+        title = title.split(' — ').pop() || title;
+    }
+
+    const hasActiveChat = title.length > 0 && !isAgentDefault;
     return { title: title || '(Untitled)', hasActiveChat };
 })()`;
 
@@ -133,11 +149,11 @@ const SCRAPE_PAST_CONVERSATIONS_SCRIPT = `(() => {
     // Detect the "Other Conversations" section boundary.
     // Sessions below this header belong to other projects and must be excluded.
     let boundaryTop = Infinity;
-    const headerCandidates = container.querySelectorAll('div[class*="text-xs"][class*="opacity"]');
+    const headerCandidates = container.querySelectorAll('div[class*="text-xs"][class*="opacity"], div[class*="section-header"]');
     for (const el of headerCandidates) {
         if (!isVisible(el)) continue;
         const t = normalize(el.textContent || '');
-        if (/^Other\\s+Conversations?$/i.test(t)) {
+        if (/^Other\s+Conversations?$/i.test(t) || /^Conversations?\s+from\s+other/i.test(t)) {
             boundaryTop = el.getBoundingClientRect().top;
             break;
         }

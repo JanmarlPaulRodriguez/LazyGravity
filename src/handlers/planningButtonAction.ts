@@ -26,7 +26,7 @@ export function createPlanningButtonAction(
             if (!parsed) return null;
             return {
                 action: parsed.action,
-                projectName: parsed.projectName ?? '',
+                workspacePath: parsed.workspacePath ?? '',
                 channelId: parsed.channelId ?? '',
             };
         },
@@ -47,9 +47,9 @@ export function createPlanningButtonAction(
                 return;
             }
 
-            const projectName = params.projectName || deps.bridge.lastActiveWorkspace;
-            const detector = projectName
-                ? deps.bridge.pool.getPlanningDetector(projectName)
+            const workspacePath = params.workspacePath || deps.bridge.lastActiveWorkspace;
+            const detector = workspacePath
+                ? deps.bridge.pool.getPlanningDetector(workspacePath)
                 : undefined;
 
             if (!detector) {

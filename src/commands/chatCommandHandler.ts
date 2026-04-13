@@ -157,8 +157,8 @@ export class ChatCommandHandler {
             }
 
             if (!cdp && this.pool) {
-                const activeNames = this.pool.getActiveWorkspaceNames();
-                cdp = activeNames.length > 0 ? this.pool.getConnected(activeNames[0]) : null;
+                const activePaths = this.pool.getActiveWorkspacePaths();
+                cdp = activePaths.length > 0 ? this.pool.getConnected(activePaths[0]) : null;
             }
 
             const info = cdp

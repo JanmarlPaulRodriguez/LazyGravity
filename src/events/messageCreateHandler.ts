@@ -131,26 +131,30 @@ export function createMessageCreateHandler(deps: MessageCreateHandlerDeps) {
             }
 
             if (parsed.commandName === 'status') {
-                const activeNames = deps.bridge.pool.getActiveWorkspaceNames();
+                const activePaths = deps.bridge.pool.getActiveWorkspacePaths();
                 const currentMode = deps.modeService.getCurrentMode();
 
                 const statusFields = [
-                    { name: 'CDP Connection', value: activeNames.length > 0 ? `🟢 ${activeNames.length} project(s) connected` : '⚪ Disconnected', inline: true },
+                    { name: 'CDP Connection', value: activePaths.length > 0 ? `🟢 ${activePaths.length} project(s) connected` : '⚪ Disconnected', inline: true },
                     { name: 'Mode', value: MODE_DISPLAY_NAMES[currentMode] || currentMode, inline: true },
                     { name: 'Auto Approve', value: deps.bridge.autoAccept.isEnabled() ? '🟢 ON' : '⚪ OFF', inline: true },
                 ];
 
                 let statusDescription = '';
-                if (activeNames.length > 0) {
-                    const lines = activeNames.map((name) => {
-                        const cdp = deps.bridge.pool.getConnected(name);
+                let statusPathsCount = 0;
+                if (activePaths.length > 0) {
+                    const lines = activePaths.map((p) => {
+                        const name = deps.bridge.pool.extractProjectName(p);
+                        const cdp = deps.bridge.pool.getConnected(p);
                         const contexts = cdp ? cdp.getContexts().length : 0;
-                        const detectorActive = deps.bridge.pool.getApprovalDetector(name)?.isActive() ? ' [Detecting]' : '';
+                        const detectorActive = deps.bridge.pool.getApprovalDetector(p)?.isActive() ? ' [Detecting]' : '';
                         return `• **${name}** — Contexts: ${contexts}${detectorActive}`;
                     });
                     statusDescription = `**Connected Projects:**\n${lines.join('\n')}`;
+                    statusPathsCount = activePaths.length;
                 } else {
                     statusDescription = 'Send a message to auto-connect to a project.';
+                    statusPathsCount = 0;
                 }
 
                 const statusOutputFormat = deps.userPrefRepo?.getOutputFormat(message.author.id) ?? 'embed';
@@ -167,7 +171,7 @@ export function createMessageCreateHandler(deps: MessageCreateHandlerDeps) {
 
                 const embed = new EmbedBuilder()
                     .setTitle('🔧 Bot Status')
-                    .setColor(activeNames.length > 0 ? 0x00CC88 : 0x888888)
+                    .setColor(statusPathsCount > 0 ? 0x00CC88 : 0x888888)
                     .addFields(...statusFields)
                     .setDescription(statusDescription)
                     .setFooter({ text: '💡 Use the slash command /status for more detailed information' })
@@ -184,6 +188,9 @@ export function createMessageCreateHandler(deps: MessageCreateHandlerDeps) {
                 }).catch(logger.error);
                 return;
             }
+
+            const argsDisplay = parsed.args ? ` ${parsed.args}` : '';
+            logger.info(`[TelegramCommand] /${parsed.commandName}${argsDisplay} (chat=${message.channel.id})`);
 
             const result = await deps.slashCommandHandler.handleCommand(parsed.commandName, parsed.args || []);
 
@@ -252,7 +259,8 @@ export function createMessageCreateHandler(deps: MessageCreateHandlerDeps) {
                             );
                         }
 
-                        // Remove hourglass when task starts processing
+                        // Resolve workspace binding for this chat
+                        const chatId = message.channel.id;
                         const botId = message.client.user?.id;
                         if (botId) {
                             await message.reactions.resolve('⏳')?.users.remove(botId).catch(() => { });
@@ -262,19 +270,19 @@ export function createMessageCreateHandler(deps: MessageCreateHandlerDeps) {
                             const cdp = await deps.bridge.pool.getOrConnect(workspacePath);
                             const projectName = deps.bridge.pool.extractProjectName(workspacePath);
 
-                            deps.bridge.lastActiveWorkspace = projectName;
+                            deps.bridge.lastActiveWorkspace = workspacePath;
                             const platformChannel = wrapDiscordChannel(message.channel as TextChannel);
                             deps.bridge.lastActiveChannel = platformChannel;
-                            registerApprovalWorkspaceChannel(deps.bridge, projectName, platformChannel);
+                            registerApprovalWorkspaceChannel(deps.bridge, workspacePath, platformChannel);
 
-                            ensureApprovalDetector(deps.bridge, cdp, projectName);
-                            ensureErrorPopupDetector(deps.bridge, cdp, projectName);
-                            ensurePlanningDetector(deps.bridge, cdp, projectName);
-                            ensureRunCommandDetector(deps.bridge, cdp, projectName);
+                            ensureApprovalDetector(deps.bridge, cdp, workspacePath);
+                            ensureErrorPopupDetector(deps.bridge, cdp, workspacePath);
+                            ensurePlanningDetector(deps.bridge, cdp, workspacePath);
+                            ensureRunCommandDetector(deps.bridge, cdp, workspacePath);
 
                             const session = deps.chatSessionRepo.findByChannelId(message.channelId);
                             if (session?.displayName) {
-                                registerApprovalSessionChannel(deps.bridge, projectName, session.displayName, platformChannel);
+                                registerApprovalSessionChannel(deps.bridge, workspacePath, session.displayName, platformChannel);
                             }
 
                             if (session?.isRenamed && session.displayName) {
@@ -304,7 +312,7 @@ export function createMessageCreateHandler(deps: MessageCreateHandlerDeps) {
                                                     `(channel: ${message.channelId})`,
                                                 );
                                                 deps.chatSessionRepo.updateDisplayName(message.channelId, recoveredTitle);
-                                                registerApprovalSessionChannel(deps.bridge, projectName, recoveredTitle, platformChannel);
+                                                registerApprovalSessionChannel(deps.bridge, workspacePath, recoveredTitle, platformChannel);
                                             }
                                             activationResult = retryResult;
                                         }
@@ -337,11 +345,11 @@ export function createMessageCreateHandler(deps: MessageCreateHandlerDeps) {
                             // Re-register session channel after autoRenameChannel sets displayName
                             const updatedSession = deps.chatSessionRepo.findByChannelId(message.channelId);
                             if (updatedSession?.displayName) {
-                                registerApprovalSessionChannel(deps.bridge, projectName, updatedSession.displayName, platformChannel);
+                                registerApprovalSessionChannel(deps.bridge, workspacePath, updatedSession.displayName, platformChannel);
                             }
 
                             // Register echo hash so UserMessageDetector skips this message
-                            const userMsgDetector = deps.bridge.pool.getUserMessageDetector?.(projectName);
+                            const userMsgDetector = deps.bridge.pool.getUserMessageDetector(workspacePath);
                             if (userMsgDetector) {
                                 userMsgDetector.addEchoHash(promptText);
                             }

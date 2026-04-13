@@ -37,10 +37,8 @@ export class CdpConnectionPool {
      * @returns Connected CdpService
      */
     async getOrConnect(workspacePath: string): Promise<CdpService> {
-        const projectName = this.extractProjectName(workspacePath);
-
         // Return existing connection if available
-        const existing = this.connections.get(projectName);
+        const existing = this.connections.get(workspacePath);
         if (existing && existing.isConnected()) {
             // Re-validate that the still-open window is actually bound to this workspace.
             await existing.discoverAndConnectForWorkspace(workspacePath);
@@ -48,20 +46,22 @@ export class CdpConnectionPool {
         }
 
         // Wait for the pending connection promise if one exists (prevents concurrent connections)
-        const pending = this.connectingPromises.get(projectName);
+        const pending = this.connectingPromises.get(workspacePath);
         if (pending) {
             return pending;
         }
 
+        const projectName = this.extractProjectName(workspacePath);
+
         // Start a new connection
         const connectPromise = this.createAndConnect(workspacePath, projectName);
-        this.connectingPromises.set(projectName, connectPromise);
+        this.connectingPromises.set(workspacePath, connectPromise);
 
         try {
             const cdp = await connectPromise;
             return cdp;
         } finally {
-            this.connectingPromises.delete(projectName);
+            this.connectingPromises.delete(workspacePath);
         }
     }
 
@@ -69,8 +69,8 @@ export class CdpConnectionPool {
      * Get a connected CdpService (read-only).
      * Returns null if not connected.
      */
-    getConnected(projectName: string): CdpService | null {
-        const cdp = this.connections.get(projectName);
+    getConnected(workspacePath: string): CdpService | null {
+        const cdp = this.connections.get(workspacePath);
         if (cdp && cdp.isConnected()) {
             return cdp;
         }
@@ -80,43 +80,43 @@ export class CdpConnectionPool {
     /**
      * Disconnect the specified workspace.
      */
-    disconnectWorkspace(projectName: string): void {
-        const cdp = this.connections.get(projectName);
+    disconnectWorkspace(workspacePath: string): void {
+        const cdp = this.connections.get(workspacePath);
         if (cdp) {
             cdp.disconnect().catch((err) => {
-                logger.error(`[CdpConnectionPool] Error while disconnecting ${projectName}:`, err);
+                logger.error(`[CdpConnectionPool] Error while disconnecting ${workspacePath}:`, err);
             });
-            this.connections.delete(projectName);
+            this.connections.delete(workspacePath);
         }
 
-        const detector = this.approvalDetectors.get(projectName);
+        const detector = this.approvalDetectors.get(workspacePath);
         if (detector) {
             detector.stop();
-            this.approvalDetectors.delete(projectName);
+            this.approvalDetectors.delete(workspacePath);
         }
 
-        const errorPopupDetector = this.errorPopupDetectors.get(projectName);
+        const errorPopupDetector = this.errorPopupDetectors.get(workspacePath);
         if (errorPopupDetector) {
             errorPopupDetector.stop();
-            this.errorPopupDetectors.delete(projectName);
+            this.errorPopupDetectors.delete(workspacePath);
         }
 
-        const planningDetector = this.planningDetectors.get(projectName);
+        const planningDetector = this.planningDetectors.get(workspacePath);
         if (planningDetector) {
             planningDetector.stop();
-            this.planningDetectors.delete(projectName);
+            this.planningDetectors.delete(workspacePath);
         }
 
-        const runCmdDetector = this.runCommandDetectors.get(projectName);
+        const runCmdDetector = this.runCommandDetectors.get(workspacePath);
         if (runCmdDetector) {
             runCmdDetector.stop();
-            this.runCommandDetectors.delete(projectName);
+            this.runCommandDetectors.delete(workspacePath);
         }
 
-        const userMsgDetector = this.userMessageDetectors.get(projectName);
+        const userMsgDetector = this.userMessageDetectors.get(workspacePath);
         if (userMsgDetector) {
             userMsgDetector.stop();
-            this.userMessageDetectors.delete(projectName);
+            this.userMessageDetectors.delete(workspacePath);
         }
     }
 
@@ -124,112 +124,112 @@ export class CdpConnectionPool {
      * Disconnect all workspace connections.
      */
     disconnectAll(): void {
-        for (const projectName of [...this.connections.keys()]) {
-            this.disconnectWorkspace(projectName);
+        for (const workspacePath of [...this.connections.keys()]) {
+            this.disconnectWorkspace(workspacePath);
         }
     }
 
     /**
      * Register an approval detector for a workspace.
      */
-    registerApprovalDetector(projectName: string, detector: ApprovalDetector): void {
+    registerApprovalDetector(workspacePath: string, detector: ApprovalDetector): void {
         // Stop existing detector
-        const existing = this.approvalDetectors.get(projectName);
+        const existing = this.approvalDetectors.get(workspacePath);
         if (existing && existing.isActive()) {
             existing.stop();
         }
-        this.approvalDetectors.set(projectName, detector);
+        this.approvalDetectors.set(workspacePath, detector);
     }
 
     /**
      * Get the approval detector for a workspace.
      */
-    getApprovalDetector(projectName: string): ApprovalDetector | undefined {
-        return this.approvalDetectors.get(projectName);
+    getApprovalDetector(workspacePath: string): ApprovalDetector | undefined {
+        return this.approvalDetectors.get(workspacePath);
     }
 
     /**
      * Register an error popup detector for a workspace.
      */
-    registerErrorPopupDetector(projectName: string, detector: ErrorPopupDetector): void {
+    registerErrorPopupDetector(workspacePath: string, detector: ErrorPopupDetector): void {
         // Stop existing detector
-        const existing = this.errorPopupDetectors.get(projectName);
+        const existing = this.errorPopupDetectors.get(workspacePath);
         if (existing && existing.isActive()) {
             existing.stop();
         }
-        this.errorPopupDetectors.set(projectName, detector);
+        this.errorPopupDetectors.set(workspacePath, detector);
     }
 
     /**
      * Get the error popup detector for a workspace.
      */
-    getErrorPopupDetector(projectName: string): ErrorPopupDetector | undefined {
-        return this.errorPopupDetectors.get(projectName);
+    getErrorPopupDetector(workspacePath: string): ErrorPopupDetector | undefined {
+        return this.errorPopupDetectors.get(workspacePath);
     }
 
     /**
      * Register a planning detector for a workspace.
      */
-    registerPlanningDetector(projectName: string, detector: PlanningDetector): void {
+    registerPlanningDetector(workspacePath: string, detector: PlanningDetector): void {
         // Stop existing detector
-        const existing = this.planningDetectors.get(projectName);
+        const existing = this.planningDetectors.get(workspacePath);
         if (existing && existing.isActive()) {
             existing.stop();
         }
-        this.planningDetectors.set(projectName, detector);
+        this.planningDetectors.set(workspacePath, detector);
     }
 
     /**
      * Get the planning detector for a workspace.
      */
-    getPlanningDetector(projectName: string): PlanningDetector | undefined {
-        return this.planningDetectors.get(projectName);
+    getPlanningDetector(workspacePath: string): PlanningDetector | undefined {
+        return this.planningDetectors.get(workspacePath);
     }
 
     /**
      * Register a run command detector for a workspace.
      */
-    registerRunCommandDetector(projectName: string, detector: RunCommandDetector): void {
-        const existing = this.runCommandDetectors.get(projectName);
+    registerRunCommandDetector(workspacePath: string, detector: RunCommandDetector): void {
+        const existing = this.runCommandDetectors.get(workspacePath);
         if (existing && existing.isActive()) {
             existing.stop();
         }
-        this.runCommandDetectors.set(projectName, detector);
+        this.runCommandDetectors.set(workspacePath, detector);
     }
 
     /**
      * Get the run command detector for a workspace.
      */
-    getRunCommandDetector(projectName: string): RunCommandDetector | undefined {
-        return this.runCommandDetectors.get(projectName);
+    getRunCommandDetector(workspacePath: string): RunCommandDetector | undefined {
+        return this.runCommandDetectors.get(workspacePath);
     }
 
     /**
      * Register a user message detector for a workspace.
      */
-    registerUserMessageDetector(projectName: string, detector: UserMessageDetector): void {
-        const existing = this.userMessageDetectors.get(projectName);
+    registerUserMessageDetector(workspacePath: string, detector: UserMessageDetector): void {
+        const existing = this.userMessageDetectors.get(workspacePath);
         if (existing && existing.isActive()) {
             existing.stop();
         }
-        this.userMessageDetectors.set(projectName, detector);
+        this.userMessageDetectors.set(workspacePath, detector);
     }
 
     /**
      * Get the user message detector for a workspace.
      */
-    getUserMessageDetector(projectName: string): UserMessageDetector | undefined {
-        return this.userMessageDetectors.get(projectName);
+    getUserMessageDetector(workspacePath: string): UserMessageDetector | undefined {
+        return this.userMessageDetectors.get(workspacePath);
     }
 
     /**
      * Return a list of workspace names with active connections.
      */
-    getActiveWorkspaceNames(): string[] {
+    getActiveWorkspacePaths(): string[] {
         const active: string[] = [];
-        for (const [name, cdp] of this.connections) {
+        for (const [path, cdp] of this.connections) {
             if (cdp.isConnected()) {
-                active.push(name);
+                active.push(path);
             }
         }
         return active;
@@ -247,54 +247,54 @@ export class CdpConnectionPool {
      */
     private async createAndConnect(workspacePath: string, projectName: string): Promise<CdpService> {
         // Disconnect old connection if exists
-        const old = this.connections.get(projectName);
+        const old = this.connections.get(workspacePath);
         if (old) {
             await old.disconnect().catch(() => {});
-            this.connections.delete(projectName);
+            this.connections.delete(workspacePath);
         }
 
         const cdp = new CdpService(this.cdpOptions);
 
         // Auto-cleanup on disconnect
         cdp.on('disconnected', () => {
-            logger.error(`[CdpConnectionPool] Workspace "${projectName}" disconnected`);
+            logger.error(`[CdpConnectionPool] Workspace "${projectName}" (${workspacePath}) disconnected`);
             // Only remove from Map when reconnection fails
             // (CdpService attempts reconnection internally, so we don't remove here)
         });
 
         cdp.on('reconnectFailed', () => {
-            logger.error(`[CdpConnectionPool] Reconnection failed for workspace "${projectName}". Removing from pool`);
-            this.connections.delete(projectName);
-            const detector = this.approvalDetectors.get(projectName);
+            logger.error(`[CdpConnectionPool] Reconnection failed for workspace "${projectName}" (${workspacePath}). Removing from pool`);
+            this.connections.delete(workspacePath);
+            const detector = this.approvalDetectors.get(workspacePath);
             if (detector) {
                 detector.stop();
-                this.approvalDetectors.delete(projectName);
+                this.approvalDetectors.delete(workspacePath);
             }
-            const errorDetector = this.errorPopupDetectors.get(projectName);
+            const errorDetector = this.errorPopupDetectors.get(workspacePath);
             if (errorDetector) {
                 errorDetector.stop();
-                this.errorPopupDetectors.delete(projectName);
+                this.errorPopupDetectors.delete(workspacePath);
             }
-            const planDetector = this.planningDetectors.get(projectName);
+            const planDetector = this.planningDetectors.get(workspacePath);
             if (planDetector) {
                 planDetector.stop();
-                this.planningDetectors.delete(projectName);
+                this.planningDetectors.delete(workspacePath);
             }
-            const runCmdDetector = this.runCommandDetectors.get(projectName);
+            const runCmdDetector = this.runCommandDetectors.get(workspacePath);
             if (runCmdDetector) {
                 runCmdDetector.stop();
-                this.runCommandDetectors.delete(projectName);
+                this.runCommandDetectors.delete(workspacePath);
             }
-            const userMsgDetector = this.userMessageDetectors.get(projectName);
+            const userMsgDetector = this.userMessageDetectors.get(workspacePath);
             if (userMsgDetector) {
                 userMsgDetector.stop();
-                this.userMessageDetectors.delete(projectName);
+                this.userMessageDetectors.delete(workspacePath);
             }
         });
 
         // Connect to the workspace
         await cdp.discoverAndConnectForWorkspace(workspacePath);
-        this.connections.set(projectName, cdp);
+        this.connections.set(workspacePath, cdp);
 
         return cdp;
     }

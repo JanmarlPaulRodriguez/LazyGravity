@@ -397,20 +397,28 @@ export class CdpService extends EventEmitter {
             logger.debug(`  - title="${p.title}" url=${p.url}`);
         }
 
-        // 1. Title match (fast path)
-        const titleMatch = workbenchPages.find((t: any) => t.title?.includes(projectName));
-        if (titleMatch) {
-            return this.connectToPage(titleMatch, projectName);
+        // 1. Exact Title match (prioritized)
+        const exactMatch = workbenchPages.find((t: any) => t.title === projectName || t.title === `${projectName} — Antigravity`);
+        if (exactMatch) {
+            logger.debug(`[CdpService] Exact title match found: "${projectName}"`);
+            return this.connectToPage(exactMatch, projectName);
         }
 
-        // 2. Title match failed -> CDP probe (connect to each page and check document.title)
+        // 2. Partial Title match (fallback)
+        const partialMatch = workbenchPages.find((t: any) => t.title?.includes(projectName));
+        if (partialMatch) {
+            logger.debug(`[CdpService] Partial title match found: "${projectName}" in "${partialMatch.title}"`);
+            return this.connectToPage(partialMatch, projectName);
+        }
+
+        // 3. Title match failed -> CDP probe (connect to each page and check document.title)
         logger.debug(`[CdpService] Title match failed. Searching via CDP probe...`);
         const probeResult = await this.probeWorkbenchPages(workbenchPages, projectName, workspacePath);
         if (probeResult) {
             return true;
         }
 
-        // 3. If not found by probe either, launch a new window
+        // 4. If not found by probe either, launch a new window
         return this.launchAndConnectWorkspace(workspacePath, projectName);
     }
 
@@ -463,9 +471,18 @@ export class CdpService extends EventEmitter {
                 const normalizedLiveTitle = liveTitle.toLowerCase();
                 const normalizedProject = projectName.toLowerCase();
 
-                if (normalizedLiveTitle.includes(normalizedProject)) {
+                if (normalizedLiveTitle === normalizedProject || normalizedLiveTitle === `${normalizedProject} — antigravity`) {
                     this.currentWorkspaceName = projectName;
-                    logger.debug(`[CdpService] Probe success: detected "${projectName}"`);
+                    logger.debug(`[CdpService] Probe success (exact): detected "${projectName}"`);
+                    return true;
+                }
+
+                if (normalizedLiveTitle.includes(normalizedProject)) {
+                    // Possible match, but continue probing to see if an exact match exists elsewhere.
+                    // If this is the only match, we'll take it (later).
+                    // Actually, for now, if it includes it, we'll accept it but warn.
+                    logger.debug(`[CdpService] Probe match (partial): "${projectName}" in "${liveTitle}"`);
+                    this.currentWorkspaceName = projectName;
                     return true;
                 }
 

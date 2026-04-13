@@ -26,7 +26,7 @@ export function createErrorPopupButtonAction(
             if (!parsed) return null;
             return {
                 action: parsed.action,
-                projectName: parsed.projectName ?? '',
+                workspacePath: parsed.workspacePath ?? '',
                 channelId: parsed.channelId ?? '',
             };
         },
@@ -44,9 +44,9 @@ export function createErrorPopupButtonAction(
                 return;
             }
 
-            const projectName = params.projectName || deps.bridge.lastActiveWorkspace;
-            const detector = projectName
-                ? deps.bridge.pool.getErrorPopupDetector(projectName)
+            const workspacePath = params.workspacePath || deps.bridge.lastActiveWorkspace;
+            const detector = workspacePath
+                ? deps.bridge.pool.getErrorPopupDetector(workspacePath)
                 : undefined;
 
             if (!detector) {

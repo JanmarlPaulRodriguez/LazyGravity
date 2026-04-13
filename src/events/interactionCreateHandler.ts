@@ -70,10 +70,10 @@ export interface InteractionCreateHandlerDeps {
     ) => Promise<void>;
     handleScreenshot?: (...args: any[]) => Promise<void>;
     getCurrentCdp: (bridge: CdpBridge) => CdpService | null;
-    parseApprovalCustomId: (customId: string) => { action: 'approve' | 'always_allow' | 'deny'; projectName: string | null; channelId: string | null } | null;
-    parsePlanningCustomId: (customId: string) => { action: 'open' | 'proceed'; projectName: string | null; channelId: string | null } | null;
-    parseErrorPopupCustomId: (customId: string) => { action: 'dismiss' | 'copy_debug' | 'retry'; projectName: string | null; channelId: string | null } | null;
-    parseRunCommandCustomId: (customId: string) => { action: 'run' | 'reject'; projectName: string | null; channelId: string | null } | null;
+    parseApprovalCustomId: (customId: string) => { action: 'approve' | 'always_allow' | 'deny'; workspacePath: string | null; channelId: string | null } | null;
+    parsePlanningCustomId: (customId: string) => { action: 'open' | 'proceed'; workspacePath: string | null; channelId: string | null } | null;
+    parseErrorPopupCustomId: (customId: string) => { action: 'dismiss' | 'copy_debug' | 'retry'; workspacePath: string | null; channelId: string | null } | null;
+    parseRunCommandCustomId: (customId: string) => { action: 'run' | 'reject'; workspacePath: string | null; channelId: string | null } | null;
     handleSlashInteraction: (
         interaction: ChatInputCommandInteraction,
         handler: SlashCommandHandler,
@@ -89,10 +89,10 @@ export interface InteractionCreateHandlerDeps {
     handleTemplateUse?: (interaction: ButtonInteraction, templateId: number) => Promise<void>;
     joinHandler?: JoinCommandHandler;
     userPrefRepo?: UserPreferenceRepository;
-    ensureApprovalDetector?: (bridge: CdpBridge, cdp: CdpService, projectName: string) => void;
-    ensureErrorPopupDetector?: (bridge: CdpBridge, cdp: CdpService, projectName: string) => void;
-    ensurePlanningDetector?: (bridge: CdpBridge, cdp: CdpService, projectName: string) => void;
-    ensureRunCommandDetector?: (bridge: CdpBridge, cdp: CdpService, projectName: string) => void;
+    ensureApprovalDetector?: (bridge: CdpBridge, cdp: CdpService, workspacePath: string) => void;
+    ensureErrorPopupDetector?: (bridge: CdpBridge, cdp: CdpService, workspacePath: string) => void;
+    ensurePlanningDetector?: (bridge: CdpBridge, cdp: CdpService, workspacePath: string) => void;
+    ensureRunCommandDetector?: (bridge: CdpBridge, cdp: CdpService, workspacePath: string) => void;
 }
 
 export function createInteractionCreateHandler(deps: InteractionCreateHandlerDeps) {
@@ -112,17 +112,17 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
         try {
             const cdp = await deps.bridge.pool.getOrConnect(workspacePath);
             const projectName = deps.bridge.pool.extractProjectName(workspacePath);
-            deps.bridge.lastActiveWorkspace = projectName;
+            deps.bridge.lastActiveWorkspace = workspacePath;
 
             if (interaction.channel && interaction.channel.isTextBased()) {
                 deps.bridge.lastActiveChannel = wrapDiscordChannel(interaction.channel as any);
             }
 
             // Initialize detectors if not already running
-            ensureApprovalDetector(deps.bridge, cdp, projectName);
-            ensureErrorPopupDetector(deps.bridge, cdp, projectName);
-            ensurePlanningDetector(deps.bridge, cdp, projectName);
-            ensureRunCommandDetector(deps.bridge, cdp, projectName);
+            ensureApprovalDetector(deps.bridge, cdp, workspacePath);
+            ensureErrorPopupDetector(deps.bridge, cdp, workspacePath);
+            ensurePlanningDetector(deps.bridge, cdp, workspacePath);
+            ensureRunCommandDetector(deps.bridge, cdp, workspacePath);
 
             return cdp;
         } catch (e) {
@@ -149,9 +149,12 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
                         return;
                     }
 
-                    const projectName = approvalAction.projectName ?? deps.bridge.lastActiveWorkspace;
-                    const detector = projectName
-                        ? deps.bridge.pool.getApprovalDetector(projectName)
+                    const channelId = approvalAction.channelId || interaction.channelId;
+                    const workspacePath = approvalAction.workspacePath 
+                        ?? (channelId ? deps.wsHandler.getWorkspaceForChannel(channelId) : null)
+                        ?? deps.bridge.lastActiveWorkspace;
+                    const detector = workspacePath
+                        ? deps.bridge.pool.getApprovalDetector(workspacePath)
                         : undefined;
 
                     if (!detector) {
@@ -219,9 +222,12 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
                         return;
                     }
 
-                    const planWorkspaceDirName = planningAction.projectName ?? deps.bridge.lastActiveWorkspace;
-                    const planDetector = planWorkspaceDirName
-                        ? deps.bridge.pool.getPlanningDetector(planWorkspaceDirName)
+                    const planChannelId = planningAction.channelId || interaction.channelId;
+                    const planWorkspacePath = planningAction.workspacePath
+                        ?? (planChannelId ? deps.wsHandler.getWorkspaceForChannel(planChannelId) : null)
+                        ?? deps.bridge.lastActiveWorkspace;
+                    const planDetector = planWorkspacePath
+                        ? deps.bridge.pool.getPlanningDetector(planWorkspacePath)
                         : undefined;
 
                     if (!planDetector) {
@@ -349,9 +355,12 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
                         return;
                     }
 
-                    const errorWorkspaceDirName = errorPopupAction.projectName ?? deps.bridge.lastActiveWorkspace;
-                    const errorDetector = errorWorkspaceDirName
-                        ? deps.bridge.pool.getErrorPopupDetector(errorWorkspaceDirName)
+                    const errChannelId = errorPopupAction.channelId || interaction.channelId;
+                    const errorWorkspacePath = errorPopupAction.workspacePath
+                        ?? (errChannelId ? deps.wsHandler.getWorkspaceForChannel(errChannelId) : null)
+                        ?? deps.bridge.lastActiveWorkspace;
+                    const errorDetector = errorWorkspacePath
+                        ? deps.bridge.pool.getErrorPopupDetector(errorWorkspacePath)
                         : undefined;
 
                     if (!errorDetector) {
@@ -503,9 +512,12 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
                         return;
                     }
 
-                    const runCmdWorkspace = runCommandAction.projectName ?? deps.bridge.lastActiveWorkspace;
-                    const runCmdDetector = runCmdWorkspace
-                        ? deps.bridge.pool.getRunCommandDetector(runCmdWorkspace)
+                    const runChannelId = runCommandAction.channelId || interaction.channelId;
+                    const runCmdWorkspacePath = runCommandAction.workspacePath
+                        ?? (runChannelId ? deps.wsHandler.getWorkspaceForChannel(runChannelId) : null)
+                        ?? deps.bridge.lastActiveWorkspace;
+                    const runCmdDetector = runCmdWorkspacePath
+                        ? deps.bridge.pool.getRunCommandDetector(runCmdWorkspacePath)
                         : undefined;
 
                     if (!runCmdDetector) {
