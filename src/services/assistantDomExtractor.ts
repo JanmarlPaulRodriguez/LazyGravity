@@ -136,6 +136,7 @@ export function extractAssistantSegmentsPayloadScript(): string {
 
     // Same selectors as RESPONSE_TEXT — ordered by specificity
     var selectors = [
+        '[data-testid="assistant-message"]',
         '.rendered-markdown',
         '.leading-relaxed.select-text',
         '.flex.flex-col.gap-y-3',

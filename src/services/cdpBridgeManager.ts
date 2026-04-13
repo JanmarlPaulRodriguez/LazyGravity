@@ -54,13 +54,14 @@ function buildSessionRouteKey(projectName: string, sessionTitle: string): string
 }
 
 const GET_CURRENT_CHAT_TITLE_SCRIPT = `(() => {
-    const panel = document.querySelector('.antigravity-agent-side-panel');
+    const panel = document.querySelector('.antigravity-agent-side-panel') || document.querySelector('[data-testid="side-panel"]');
     if (!panel) return '';
-    const header = panel.querySelector('div[class*="border-b"]');
-    if (!header) return '';
-    const titleEl = header.querySelector('div[class*="text-ellipsis"]');
+    // Prefer data-testid for title
+    const titleEl = panel.querySelector('[data-testid="side-panel-header-title"]')
+        || panel.querySelector('div[class*="text-ellipsis"]')
+        || panel.querySelector('div[class*="border-b"] div[class*="text-ellipsis"]');
     const title = titleEl ? (titleEl.textContent || '').trim() : '';
-    if (!title || title === 'Agent') return '';
+    if (!title || title === 'Agent' || title === 'Assistant') return '';
     return title;
 })()`;
 

@@ -48,11 +48,11 @@ export interface UiSyncResult {
 /** Antigravity UI DOM selector constants */
 const SELECTORS = {
     /** Chat input box: textbox excluding xterm */
-    CHAT_INPUT: 'div[role="textbox"]:not(.xterm-helper-textarea)',
+    CHAT_INPUT: 'div[data-testid="chat-input-textbox"], div[role="textbox"]:not(.xterm-helper-textarea)',
     /** Submit button search target tag */
     SUBMIT_BUTTON_CONTAINER: 'button',
     /** Submit icon SVG class candidates */
-    SUBMIT_BUTTON_SVG_CLASSES: ['lucide-arrow-right', 'lucide-arrow-up', 'lucide-send'],
+    SUBMIT_BUTTON_SVG_CLASSES: ['lucide-arrow-right', 'lucide-arrow-up', 'lucide-send', 'lucide-square'],
     /** Keyword to identify message injection target context */
     CONTEXT_URL_KEYWORD: 'cascade-panel',
 };

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { CdpService } from './cdpService';
 
 /** Session list item from the side panel */
@@ -18,7 +19,19 @@ export interface ChatSessionInfo {
 
 /** Script to get the state of the new chat button */
 const GET_NEW_CHAT_BUTTON_SCRIPT = `(() => {
-    const btn = document.querySelector('[data-tooltip-id="new-conversation-tooltip"]');
+    const btn = document.querySelector('[data-testid="new-conversation-button"]')
+        || document.querySelector('[data-testid="new-chat-button"]')
+        || document.querySelector('[data-tooltip-id="new-conversation-tooltip"]')
+        || document.querySelector('[data-tooltip-id="new-chat-tooltip"]')
+        || document.querySelector('button[aria-label="New Conversation"]')
+        || document.querySelector('button[aria-label="New Chat"]')
+        || document.querySelector('button[title="New Conversation"]')
+        || document.querySelector('button[title="New Chat"]')
+        || Array.from(document.querySelectorAll('[data-tooltip-id]')).find(el => {
+            const tid = el.getAttribute('data-tooltip-id') || '';
+            return tid.includes('new-conversation') || tid.includes('new-chat');
+        });
+
     if (!btn) return { found: false };
     const cursor = window.getComputedStyle(btn).cursor;
     const rect = btn.getBoundingClientRect();
@@ -36,14 +49,15 @@ const GET_NEW_CHAT_BUTTON_SCRIPT = `(() => {
  * The title element is a div with the text-ellipsis class inside the header.
  */
 const GET_CHAT_TITLE_SCRIPT = `(() => {
-    const panel = document.querySelector('.antigravity-agent-side-panel');
+    const panel = document.querySelector('.antigravity-agent-side-panel') || document.querySelector('[data-testid="side-panel"]');
     if (!panel) return { title: '', hasActiveChat: false };
-    const header = panel.querySelector('div[class*="border-b"]');
-    if (!header) return { title: '', hasActiveChat: false };
-    const titleEl = header.querySelector('div[class*="text-ellipsis"]');
+    // Prefer data-testid for title
+    const titleEl = panel.querySelector('[data-testid="side-panel-header-title"]')
+        || panel.querySelector('div[class*="text-ellipsis"]')
+        || panel.querySelector('div[class*="border-b"] div[class*="text-ellipsis"]');
     const title = titleEl ? (titleEl.textContent || '').trim() : '';
-    // "Agent" is the default empty chat title
-    const hasActiveChat = title.length > 0 && title !== 'Agent';
+    // "Agent" or "Assistant" are default empty chat titles
+    const hasActiveChat = title.length > 0 && title !== 'Agent' && title !== 'Assistant';
     return { title: title || '(Untitled)', hasActiveChat };
 })()`;
 
@@ -61,11 +75,15 @@ const FIND_PAST_CONVERSATIONS_BUTTON_SCRIPT = `(() => {
         return { found: true, x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) };
     };
 
-    // Strategy 1 (primary): data-past-conversations-toggle attribute
+    // Strategy 0: data-testid (most stable)
+    const tidBtn = document.querySelector('[data-testid="past-conversations-button"]');
+    if (tidBtn && isVisible(tidBtn)) return getRect(tidBtn);
+
+    // Strategy 1: data-past-conversations-toggle attribute
     const toggle = document.querySelector('[data-past-conversations-toggle]');
     if (toggle && isVisible(toggle)) return getRect(toggle);
 
-    // Strategy 2: data-tooltip-id containing "history"
+    // Strategy 2: data-tooltip-id containing "history" or "past-conversations"
     const tooltipEls = Array.from(document.querySelectorAll('[data-tooltip-id]'));
     for (const el of tooltipEls) {
         if (!isVisible(el)) continue;
@@ -98,9 +116,10 @@ const SCRAPE_PAST_CONVERSATIONS_SCRIPT = `(() => {
 
     // Past Conversations opens as a floating QuickInput dialog, not inside the side panel.
     // Try the visible QuickInput dialog first, then fall back to the side panel.
-    const quickInputPanels = Array.from(document.querySelectorAll('div[class*="bg-quickinput-background"]'));
+    const quickInputPanels = Array.from(document.querySelectorAll('div[class*="bg-quickinput-background"], [data-testid="quick-input"]'));
     const panel = quickInputPanels.find((el) => isVisible(el))
-        || document.querySelector('.antigravity-agent-side-panel');
+        || document.querySelector('.antigravity-agent-side-panel')
+        || document.querySelector('[data-testid="side-panel"]');
     if (!panel) return null;
 
     const items = [];
@@ -158,9 +177,10 @@ const SCRAPE_PAST_CONVERSATIONS_SCRIPT = `(() => {
  */
 const FIND_SHOW_MORE_BUTTON_SCRIPT = `(() => {
     const isVisible = (el) => !!el && el instanceof HTMLElement && el.offsetParent !== null;
-    const quickInputPanels = Array.from(document.querySelectorAll('div[class*="bg-quickinput-background"]'));
+    const quickInputPanels = Array.from(document.querySelectorAll('div[class*="bg-quickinput-background"], [data-testid="quick-input"]'));
     const root = quickInputPanels.find((el) => isVisible(el))
         || document.querySelector('.antigravity-agent-side-panel')
+        || document.querySelector('[data-testid="side-panel"]')
         || document;
     const els = Array.from(root.querySelectorAll('div, span'));
     for (const el of els) {
@@ -185,7 +205,9 @@ function buildActivateChatByTitleScript(title: string): string {
         const wanted = (wantedRaw || '').toLowerCase().replace(/\\s+/g, ' ').trim();
         if (!wanted) return { ok: false, error: 'Empty target title' };
 
-        const panel = document.querySelector('.antigravity-agent-side-panel') || document;
+        const panel = document.querySelector('.antigravity-agent-side-panel')
+            || document.querySelector('[data-testid="side-panel"]')
+            || document;
         const normalize = (text) => (text || '').toLowerCase().replace(/\\s+/g, ' ').trim();
         const isVisible = (el) => !!el && el instanceof HTMLElement && el.offsetParent !== null;
         const clickTarget = (el) => {
@@ -380,9 +402,10 @@ function buildActivateViaPastConversationsScript(title: string): string {
         };
 
         return (async () => {
-            // Primary: click via data-past-conversations-toggle attribute
+            // Primary: click via data-testid or data-past-conversations-toggle attribute
             let opened = false;
-            const toggleBtn = document.querySelector('[data-past-conversations-toggle]');
+            const toggleBtn = document.querySelector('[data-testid="past-conversations-button"]')
+                || document.querySelector('[data-past-conversations-toggle]');
             if (toggleBtn && isVisible(toggleBtn)) {
                 const clickable = getClickable(toggleBtn);
                 if (clickable) { clickable.click(); opened = true; }
@@ -665,7 +688,38 @@ export class ChatSessionService {
                 return { ok: true };
             }
 
-            // Button still enabled -> click may not have worked
+            // Fallback: Try direct DOM click inside the browser context
+            logger.debug('[ChatSession] Mouse event did not transition state. Trying direct .click()...');
+            await cdpService.call('Runtime.evaluate', {
+                expression: `(() => {
+                    const btn = document.querySelector('[data-testid="new-conversation-button"]')
+                        || document.querySelector('[data-testid="new-chat-button"]')
+                        || document.querySelector('[data-tooltip-id="new-conversation-tooltip"]')
+                        || document.querySelector('[data-tooltip-id="new-chat-tooltip"]')
+                        || document.querySelector('button[aria-label*="New Chat"]')
+                        || document.querySelector('button[aria-label*="New Conv"]')
+                        || Array.from(document.querySelectorAll('[data-tooltip-id]')).find(el => {
+                            const tid = el.getAttribute('data-tooltip-id') || '';
+                            return tid.includes('new-conversation') || tid.includes('new-chat');
+                        });
+                    if (btn && btn instanceof HTMLElement) {
+                        btn.click();
+                        return true;
+                    }
+                    return false;
+                })()`,
+                returnByValue: true,
+                contextId: contexts[0].id,
+            });
+
+            // Wait a bit longer for heavy projects
+            await new Promise(r => setTimeout(r, 2000));
+
+            const finalState = await this.getNewChatButtonState(cdpService, contexts);
+            if (finalState.found && !finalState.enabled) {
+                return { ok: true };
+            }
+
             return { ok: false, error: 'Clicked new chat button but state did not change' };
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);

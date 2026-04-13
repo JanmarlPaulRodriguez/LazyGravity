@@ -42,7 +42,7 @@ const DETECT_USER_MESSAGE_SCRIPT = `(() => {
     // user bubble containers. This avoids the parent-container problem where
     // querySelectorAll matches a wrapper that contains multiple bubbles.
     const textEls = scope.querySelectorAll(
-        '[class*="bg-gray-500/15"][class*="select-text"] .whitespace-pre-wrap'
+        '[data-testid="user-message"] .whitespace-pre-wrap, [class*="bg-gray-500/15"][class*="select-text"] .whitespace-pre-wrap'
     );
 
     if (textEls.length > 0) {
