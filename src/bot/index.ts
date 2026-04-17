@@ -67,6 +67,9 @@ import {
     registerApprovalSessionChannel,
     registerApprovalWorkspaceChannel,
 } from '../services/cdpBridgeManager';
+import { DeviceRepository } from '../database/deviceRepository';
+import { WolService } from '../services/wolService';
+import { WolCommandHandler } from '../commands/wolCommandHandler';
 import { buildModeModelLines, fitForSingleEmbedDescription, splitForEmbedDescription } from '../utils/streamMessageFormatter';
 import { formatForDiscord, splitOutputAndLogs } from '../utils/discordFormatter';
 import { ProcessLogBuffer } from '../utils/processLogBuffer';
@@ -948,6 +951,9 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
     const cleanupHandler = new CleanupCommandHandler(chatSessionRepo, workspaceBindingRepo);
 
     const slashCommandHandler = new SlashCommandHandler(templateRepo);
+    const deviceRepo = new DeviceRepository(db);
+    const wolService = new WolService(deviceRepo);
+    const wolHandler = new WolCommandHandler(wolService, deviceRepo);
 
     // Discord platform — only initialise the Discord client when the platform is enabled
     if (config.platforms.includes('discord')) {
@@ -1034,6 +1040,7 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
         slashCommandHandler,
         wsHandler,
         chatHandler,
+        wolHandler,
         client,
         sendModeUI,
         sendModelsUI,
@@ -1045,6 +1052,11 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
         parseRunCommandCustomId,
         joinHandler,
         userPrefRepo,
+        handleAutocompleteInteraction: async (interaction, wolHandlerArg) => {
+            if (interaction.commandName === 'wake') {
+                await wolHandlerArg.handleAutocomplete(interaction);
+            }
+        },
         handleSlashInteraction: async (
             interaction,
             handler,
@@ -1055,6 +1067,7 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
             modeServiceArg,
             modelServiceArg,
             autoAcceptServiceArg,
+            wolHandlerArg,
             clientArg,
         ) => handleSlashInteraction(
             interaction,
@@ -1066,6 +1079,7 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
             modeServiceArg,
             modelServiceArg,
             autoAcceptServiceArg,
+            wolHandlerArg,
             clientArg,
             promptDispatcher,
             templateRepo,
@@ -1436,6 +1450,7 @@ async function handleSlashInteraction(
     modeService: ModeService,
     modelService: ModelService,
     autoAcceptService: AutoAcceptService,
+    wolHandler: import('../commands/wolCommandHandler').WolCommandHandler,
     _client: Client,
     promptDispatcher: PromptDispatcher,
     templateRepo: TemplateRepository,
@@ -1586,8 +1601,8 @@ async function handleSlashInteraction(
             const currentMode = modeService.getCurrentMode();
 
             const mirroringWorkspaces = activePaths.filter(
-                (p) => bridge.pool.getUserMessageDetector(p)?.isActive(),
-            ).map(p => bridge.pool.extractProjectName(p));
+                (p: string) => bridge.pool.getUserMessageDetector(p)?.isActive(),
+            ).map((p: string) => bridge.pool.extractProjectName(p));
             const mirrorStatus = mirroringWorkspaces.length > 0
                 ? `📡 ON (${mirroringWorkspaces.join(', ')})`
                 : '⚪ OFF';
@@ -1601,7 +1616,7 @@ async function handleSlashInteraction(
 
             let statusDescription = '';
             if (activePaths.length > 0) {
-                const lines = activePaths.map((p) => {
+                const lines = activePaths.map((p: string) => {
                     const name = bridge.pool.extractProjectName(p);
                     const cdp = bridge.pool.getConnected(p);
                     const contexts = cdp ? cdp.getContexts().length : 0;
@@ -1794,6 +1809,14 @@ async function handleSlashInteraction(
             break;
         }
 
+        case 'wake': {
+            await wolHandler.handleWake(interaction);
+            break;
+        }
+        case 'device': {
+            await wolHandler.handleDevice(interaction);
+            break;
+        }
         default:
             await interaction.editReply({
                 content: `Unknown command: /${commandName}`,

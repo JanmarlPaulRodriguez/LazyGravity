@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Wake-on-LAN (WOL) Support**: Remotely wake up local network devices via Discord.
+- New slash commands: `/wake` to send magic packets, and `/device` to manage (add/list/delete) devices.
+- Local SQLite persistence for device MAC addresses (private and secure).
+- i18n support for WOL commands (English and Japanese).
+
 ## [0.3.0] - 2026-03-03
 
 ### Added
