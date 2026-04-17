@@ -99,6 +99,8 @@ Just type in any bound channel:
 - `📝 /output [embed|plain]` — Toggle output format between Embed and Plain Text (plain text is easier to copy on mobile)
 - `📋 /logs [lines] [level]` — View recent bot logs (ephemeral)
 - `🏓 /ping` — Check bot latency
+- `📡 /wake <target>` — Send Wake-on-LAN magic packet to a device (name or MAC)
+- `📠 /device [add|list|delete]` — Manage registered Wake-on-LAN devices
 - `🧹 /cleanup [days]` — Scan and clean up inactive session channels (default: 7 days)
 - `❓ /help` — Display list of available commands
 
@@ -295,6 +297,13 @@ src/platform/
 ```
 
 Both adapters implement the same `PlatformAdapter` interface and emit events through `PlatformAdapterEvents`. The `EventRouter` dispatches events to platform-agnostic handlers, and the `WorkspaceQueue` serializes concurrent requests per workspace across platforms.
+
+## Changelog
+
+### Unreleased
+- Added Wake-on-LAN (WOL) support via `/wake` and `/device` commands.
+- Local SQLite storage for device MAC addresses (private/secure).
+- Improved Japanese localization for networking features.
 
 ## License
 

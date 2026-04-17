@@ -192,6 +192,56 @@ const pingCommand = new SlashCommandBuilder()
     .setName('ping')
     .setDescription(t('Check bot latency'));
 
+/** /wake command definition */
+const wakeCommand = new SlashCommandBuilder()
+    .setName('wake')
+    .setDescription(t('Send Wake-on-LAN magic packet to a device'))
+    .addStringOption((option) =>
+        option
+            .setName('target')
+            .setDescription(t('Device name or MAC address'))
+            .setAutocomplete(true)
+            .setRequired(true)
+    );
+
+/** /device command definition */
+const deviceCommand = new SlashCommandBuilder()
+    .setName('device')
+    .setDescription(t('Manage Wake-on-LAN devices'))
+    .addSubcommand((sub) =>
+        sub
+            .setName('add')
+            .setDescription(t('Register a new device'))
+            .addStringOption((option) =>
+                option
+                    .setName('name')
+                    .setDescription(t('Device nickname'))
+                    .setRequired(true)
+            )
+            .addStringOption((option) =>
+                option
+                    .setName('mac')
+                    .setDescription(t('MAC address (e.g. 00:11:22:33:44:55)'))
+                    .setRequired(true)
+            )
+    )
+    .addSubcommand((sub) =>
+        sub
+            .setName('list')
+            .setDescription(t('List all registered devices'))
+    )
+    .addSubcommand((sub) =>
+        sub
+            .setName('delete')
+            .setDescription(t('Delete a registered device'))
+            .addStringOption((option) =>
+                option
+                    .setName('name')
+                    .setDescription(t('Name of the device to delete'))
+                    .setRequired(true)
+            )
+    );
+
 /** Array of commands to register */
 export const slashCommands = [
     helpCommand,
@@ -211,6 +261,8 @@ export const slashCommands = [
     outputCommand,
     pingCommand,
     logsCommand,
+    wakeCommand,
+    deviceCommand,
 ];
 
 /**

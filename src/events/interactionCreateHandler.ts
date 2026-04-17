@@ -1,5 +1,6 @@
 import {
     ActionRowBuilder,
+    AutocompleteInteraction,
     ButtonBuilder,
     ButtonInteraction,
     ChatInputCommandInteraction,
@@ -58,6 +59,7 @@ export interface InteractionCreateHandlerDeps {
     slashCommandHandler: SlashCommandHandler;
     wsHandler: WorkspaceCommandHandler;
     chatHandler: ChatCommandHandler;
+    wolHandler: any; // Using any for now to avoid circular dependency or complex imports if needed, but I should probably import WolCommandHandler
     client: any;
     sendModeUI: (target: { editReply: (opts: any) => Promise<any> }, modeService: ModeService, deps?: import('../ui/modeUi').ModeUiDeps) => Promise<void>;
     sendModelsUI: (
@@ -84,7 +86,12 @@ export interface InteractionCreateHandlerDeps {
         modeService: ModeService,
         modelService: ModelService,
         autoAcceptService: AutoAcceptService,
+        wolHandler: any,
         client: any,
+    ) => Promise<void>;
+    handleAutocompleteInteraction: (
+        interaction: AutocompleteInteraction,
+        wolHandler: any,
     ) => Promise<void>;
     handleTemplateUse?: (interaction: ButtonInteraction, templateId: number) => Promise<void>;
     joinHandler?: JoinCommandHandler;
@@ -845,6 +852,11 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
             return;
         }
 
+        if (interaction.isAutocomplete()) {
+            await deps.handleAutocompleteInteraction(interaction, deps.wolHandler);
+            return;
+        }
+ 
         if (!interaction.isChatInputCommand()) return;
 
         const commandInteraction = interaction as ChatInputCommandInteraction;
@@ -882,6 +894,7 @@ export function createInteractionCreateHandler(deps: InteractionCreateHandlerDep
                 deps.modeService,
                 deps.modelService,
                 deps.bridge.autoAccept,
+                deps.wolHandler,
                 deps.client,
             );
         } catch (error) {
