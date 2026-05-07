@@ -30,21 +30,55 @@ export interface ApprovalDetectorOptions {
  * Detects allow/deny button pairs and extracts descriptions with fallbacks.
  */
 const DETECT_APPROVAL_SCRIPT = `(() => {
-    const ALLOW_ONCE_PATTERNS = ['allow once', 'allow one time', '今回のみ許可', '1回のみ許可', '一度許可'];
+    const ALLOW_ONCE_PATTERNS = [
+        'allow once',
+        'allow one time',
+        '今回のみ許可',
+        '1回のみ許可',
+        '一度許可',
+        '一度だけ許可',
+    ];
     const ALWAYS_ALLOW_PATTERNS = [
         'allow this conversation',
         'allow this chat',
         'always allow',
+        'allow in workspace',
+        'allow workspace',
         '常に許可',
         'この会話を許可',
+        'ワークスペースで許可',
+        'ワークスペースを許可',
     ];
-    const ALLOW_PATTERNS = ['allow', 'permit', '許可', '承認', '確認'];
-    const DENY_PATTERNS = ['deny', '拒否', 'decline'];
+    const ALLOW_PATTERNS = [
+        'allow',
+        'permit',
+        '許可',
+        '承認',
+        '確認',
+        'アクセスを許可',
+        'trust',
+        'allow access',
+    ];
+    const DENY_PATTERNS = [
+        'deny',
+        '拒否',
+        'decline',
+        'cancel',
+        'reject',
+        'キャンセル',
+        '拒絶',
+        '取り消し',
+    ];
 
     const normalize = (text) => (text || '').toLowerCase().replace(/\\s+/g, ' ').trim();
 
     const allButtons = Array.from(document.querySelectorAll('button'))
-        .filter(btn => btn.offsetParent !== null);
+        .filter(btn => {
+            if (btn.offsetParent !== null) return true;
+            // Fallback for elements that might be visible but have no offsetParent (e.g. fixed/absolute in some cases)
+            const rect = btn.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+        });
 
     let approveBtn = allButtons.find(btn => {
         const t = normalize(btn.textContent || '');
@@ -55,7 +89,8 @@ const DETECT_APPROVAL_SCRIPT = `(() => {
         approveBtn = allButtons.find(btn => {
             const t = normalize(btn.textContent || '');
             const isAlways = ALWAYS_ALLOW_PATTERNS.some(p => t.includes(p));
-            return !isAlways && ALLOW_PATTERNS.some(p => t.includes(p));
+            const isDeny = DENY_PATTERNS.some(p => t.includes(p));
+            return !isAlways && !isDeny && ALLOW_PATTERNS.some(p => t.includes(p));
         }) || null;
     }
 
@@ -67,13 +102,19 @@ const DETECT_APPROVAL_SCRIPT = `(() => {
         || document.body;
 
     const containerButtons = Array.from(container.querySelectorAll('button'))
-        .filter(btn => btn.offsetParent !== null);
+        .filter(btn => {
+            if (btn.offsetParent !== null) return true;
+            const rect = btn.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+        });
 
     const denyBtn = containerButtons.find(btn => {
         const t = normalize(btn.textContent || '');
         return DENY_PATTERNS.some(p => t.includes(p));
     }) || null;
 
+    // We still prefer having a deny button to avoid false positives with any "Allow" button in the UI,
+    // but we've expanded DENY_PATTERNS to include "cancel" and "reject".
     if (!denyBtn) return null;
 
     const alwaysAllowBtn = containerButtons.find(btn => {

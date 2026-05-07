@@ -105,8 +105,22 @@ export function buildApprovalNotification(opts: {
     readonly toolNames?: readonly string[];
     /** Additional fields appended after default ones. */
     readonly extraFields?: readonly { readonly name: string; readonly value: string; readonly inline?: boolean }[];
+    /** Custom labels for buttons. */
+    readonly approveLabel?: string;
+    readonly alwaysAllowLabel?: string;
+    readonly denyLabel?: string;
 }): MessagePayload {
-    const { title, description, projectName, channelId, toolNames, extraFields } = opts;
+    const {
+        title,
+        description,
+        projectName,
+        channelId,
+        toolNames,
+        extraFields,
+        approveLabel,
+        alwaysAllowLabel,
+        denyLabel,
+    } = opts;
 
     const richContent = pipe(
         createRichContent(),
@@ -128,9 +142,9 @@ export function buildApprovalNotification(opts: {
 
     const components: readonly ComponentRow[] = [
         buttonRow(
-            button(customId(APPROVE_ACTION_PREFIX, projectName, channelId), 'Allow', 'success'),
-            button(customId(ALWAYS_ALLOW_ACTION_PREFIX, projectName, channelId), 'Allow Chat', 'primary'),
-            button(customId(DENY_ACTION_PREFIX, projectName, channelId), 'Deny', 'danger'),
+            button(customId(APPROVE_ACTION_PREFIX, projectName, channelId), approveLabel || 'Allow', 'success'),
+            button(customId(ALWAYS_ALLOW_ACTION_PREFIX, projectName, channelId), alwaysAllowLabel || 'Allow Chat', 'primary'),
+            button(customId(DENY_ACTION_PREFIX, projectName, channelId), denyLabel || 'Deny', 'danger'),
         ),
     ];
 
