@@ -23,6 +23,8 @@ export interface AppConfig {
     platforms: PlatformType[];
     /** Response monitor inactivity timeout in ms. 0 = disabled. Default: 900000 (15 min). */
     responseTimeoutMs: number;
+    /** (Optional) Specific channel ID for the startup dashboard embed. */
+    startupChannelId?: string;
 }
 
 export type ResponseDeliveryMode = 'stream';

@@ -1014,16 +1014,35 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
                 .setFooter({ text: `Started at ${new Date().toLocaleString()}` })
                 .setTimestamp();
 
-            // Send to the first available text channel in the guild
-            const guild = readyClient.guilds.cache.first();
-            if (guild) {
-                const channel = guild.channels.cache.find(
-                    (ch) => ch.isTextBased() && !ch.isVoiceBased() && ch.permissionsFor(readyClient.user)?.has('SendMessages'),
-                );
-                if (channel && channel.isTextBased()) {
-                    await channel.send({ embeds: [dashboardEmbed] });
-                    logger.info('Startup dashboard embed sent.');
+            // Send to the dashboard channel
+            let channel: any = null;
+            if (config.startupChannelId) {
+                channel = readyClient.channels.cache.get(config.startupChannelId);
+            }
+
+            if (!channel) {
+                const guild = config.guildId
+                    ? readyClient.guilds.cache.get(config.guildId)
+                    : readyClient.guilds.cache.first();
+
+                if (guild) {
+                    // Priority 1: Channel named 'general'
+                    channel = guild.channels.cache.find(
+                        (ch) => ch.isTextBased() && !ch.isVoiceBased() && ch.name.toLowerCase() === 'general' && ch.permissionsFor(readyClient.user)?.has('SendMessages'),
+                    );
+
+                    // Priority 2: Any text channel the bot can speak in
+                    if (!channel) {
+                        channel = guild.channels.cache.find(
+                            (ch) => ch.isTextBased() && !ch.isVoiceBased() && ch.permissionsFor(readyClient.user)?.has('SendMessages'),
+                        );
+                    }
                 }
+            }
+
+            if (channel && channel.isTextBased()) {
+                await (channel as any).send({ embeds: [dashboardEmbed] });
+                logger.info(`Startup dashboard embed sent to #${(channel as any).name}.`);
             }
         } catch (error) {
             logger.warn('Failed to send startup dashboard embed:', error);
