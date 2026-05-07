@@ -380,6 +380,9 @@ export function ensureApprovalDetector(
                     { name: t('Allow Chat button'), value: info.alwaysAllowText || t('In Dropdown'), inline: true },
                     { name: t('Deny button'), value: info.denyText || t('(None)'), inline: true },
                 ],
+                approveLabel: info.approveText,
+                alwaysAllowLabel: info.alwaysAllowText || undefined,
+                denyLabel: info.denyText,
             });
 
             const sent = await targetChannel.send(payload).catch((err: any) => {

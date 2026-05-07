@@ -31,6 +31,7 @@ export interface PersistedConfig {
     telegramAllowedUserIds?: string[];
     platforms?: PlatformType[];
     responseTimeoutMs?: number;
+    startupChannelId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +147,7 @@ function mergeConfig(persisted: PersistedConfig): AppConfig {
         telegramToken,
         telegramAllowedUserIds,
         platforms,
+        startupChannelId: process.env.STARTUP_CHANNEL_ID ?? persisted.startupChannelId ?? undefined,
     };
 }
 

@@ -103,6 +103,19 @@ describe('buildApprovalNotification', () => {
         expect(buttons[2]).toMatchObject({ label: 'Deny', style: 'danger' });
     });
 
+    it('uses custom labels for buttons when provided', () => {
+        const payload = buildApprovalNotification({
+            ...baseOpts,
+            approveLabel: '許可する',
+            alwaysAllowLabel: '常に許可',
+            denyLabel: 'キャンセル',
+        });
+        const buttons = extractButtons(payload);
+        expect(buttons[0]).toMatchObject({ label: '許可する', style: 'success' });
+        expect(buttons[1]).toMatchObject({ label: '常に許可', style: 'primary' });
+        expect(buttons[2]).toMatchObject({ label: 'キャンセル', style: 'danger' });
+    });
+
     it('builds customIds with projectName and channelId', () => {
         const payload = buildApprovalNotification(baseOpts);
         const ids = extractCustomIds(payload);
